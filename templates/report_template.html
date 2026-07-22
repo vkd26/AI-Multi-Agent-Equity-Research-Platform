@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>{{ company_name }} 투자보고서</title>
+<style>
+  @page { size: A4; margin: 2cm; }
+  body { font-family: "Malgun Gothic", "Noto Sans KR", sans-serif; color: #1a1a1a; line-height: 1.5; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 16px; margin-top: 28px; border-bottom: 2px solid #1a1a1a; padding-bottom: 4px; }
+  h3 { font-size: 13px; margin-top: 14px; margin-bottom: 6px; }
+  .meta { color: #555; font-size: 12px; margin-bottom: 20px; }
+  .stat-row { display: flex; gap: 16px; margin: 12px 0; }
+  .stat { border: 1px solid #ddd; border-radius: 6px; padding: 10px 16px; flex: 1; }
+  .stat .label { font-size: 11px; color: #666; }
+  .stat .value { font-size: 18px; font-weight: bold; }
+  .stat.highlight { border-color: #1e5aa8; }
+  table.data-table { border-collapse: collapse; width: 100%; font-size: 12px; margin-top: 8px; }
+  table.data-table th, table.data-table td { border: 1px solid #ddd; padding: 6px 10px; text-align: right; }
+  table.data-table th:first-child, table.data-table td:first-child { text-align: left; }
+  p { font-size: 12px; }
+  ul { font-size: 12px; margin: 4px 0; padding-left: 20px; }
+  .summary-block { background: #f7f7f7; border-radius: 6px; padding: 12px 16px; font-size: 12px; }
+  .rationale { font-size: 11px; color: #555; font-style: italic; margin-top: 8px; }
+  .bear-case { border-left: 3px solid #c0392b; padding-left: 12px; }
+  .thesis { border-left: 3px solid #1e8a3d; padding-left: 12px; }
+  .appendix-item { font-size: 11px; color: #444; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<h1>{{ company_name }} ({{ ticker }}) 투자보고서</h1>
+<div class="meta">작성일: {{ report_date }} · AI Multi-Agent Equity Research Platform 자동 생성</div>
+
+<div class="stat-row">
+  <div class="stat"><div class="label">현재주가</div><div class="value">{{ current_price }}</div></div>
+  <div class="stat highlight"><div class="label">목표주가 · 괴리율</div><div class="value">{{ target_price }} ({{ upside_pct }})</div></div>
+  <div class="stat highlight"><div class="label">투자의견</div><div class="value">{{ investment_opinion }}</div></div>
+</div>
+
+<h2>Executive Summary</h2>
+<div class="summary-block">{{ executive_summary }}</div>
+
+<h2>Company Overview</h2>
+<p>{{ company_overview }}</p>
+
+<h2>Business Analysis</h2>
+<p>{{ business_analysis }}</p>
+
+<h2>Financial Analysis</h2>
+<table class="data-table">
+  <thead><tr><th>지표</th><th>값</th></tr></thead>
+  <tbody>
+  {% for key, value in financial_ratios.items() %}
+    <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Valuation</h2>
+<h3>DCF</h3>
+<p>내재주가: {{ dcf_implied_price }} · 기업가치(EV): {{ dcf_enterprise_value }}</p>
+<h3>Comparable Company Analysis</h3>
+<p>EV/EBITDA 기준: {{ comps_price_ev_ebitda }} · P/E 기준: {{ comps_price_pe }}</p>
+{% if football_field %}
+<h3>Football Field</h3>
+<table class="data-table">
+  <thead><tr><th>방법론</th><th>Low</th><th>High</th><th>Midpoint</th></tr></thead>
+  <tbody>
+  {% for row in football_field %}
+    <tr><td>{{ row.method }}</td><td>{{ "%.2f"|format(row.low) }}</td><td>{{ "%.2f"|format(row.high) }}</td><td>{{ "%.2f"|format(row.midpoint) }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Investment Thesis</h2>
+<div class="thesis">
+<ul>
+{% for point in investment_thesis %}
+  <li>{{ point }}</li>
+{% endfor %}
+</ul>
+</div>
+
+<h2>Bear Case</h2>
+<div class="bear-case">
+<ul>
+{% for point in bear_case %}
+  <li>{{ point }}</li>
+{% endfor %}
+</ul>
+</div>
+{% if target_price_rationale %}
+<p class="rationale">목표주가 산정 근거: {{ target_price_rationale }}</p>
+{% endif %}
+
+<h2>Catalyst</h2>
+<ul>
+{% for item in catalysts %}
+  <li>{{ item }}</li>
+{% endfor %}
+</ul>
+
+<h2>Risk</h2>
+<ul>
+{% for item in risks %}
+  <li>{{ item }}</li>
+{% endfor %}
+</ul>
+
+<h2>Appendix</h2>
+{% if news_summary %}
+<h3>뉴스 논조 분석</h3>
+<p>
+{% for label, count in news_summary.get("tone_counts", {}).items() %}
+  {{ label }}: {{ count }}건{% if not loop.last %} · {% endif %}
+{% endfor %}
+</p>
+{% if news_summary.get("high_impact_negative_titles") %}
+<p>고영향 부정 뉴스:</p>
+{% for title in news_summary["high_impact_negative_titles"] %}
+  <div class="appendix-item">- {{ title }}</div>
+{% endfor %}
+{% endif %}
+{% endif %}
+{% if earnings_call_summaries %}
+<h3>실적발표 컨퍼런스콜 요약{% if fiscal_quarter %} ({{ fiscal_quarter }}){% endif %}</h3>
+{% for topic, result in earnings_call_summaries.items() %}
+  <p><strong>{{ topic }}</strong>: {{ result.get("summary") }}</p>
+{% endfor %}
+{% endif %}
+
+</body>
+</html>
