@@ -4,12 +4,13 @@ verbatim Q&A까지 포함된 완전한 대본을 무료로 주는 공식 API가 
 엔드포인트는 유료 전용). fool.com은 페이월 없이 대본 전문을 공개하므로 이를 파싱해서 쓴다 — 공식
 API가 아니라 페이지 구조가 바뀌면 깨질 수 있다.
 
-커버리지가 두 가지 이유로 제한적이다: (1) find_transcript_url이 검색하는 "최근 발표" 인덱스
-(_INDEX_URL)는 그 시점 기준 최근 20개 정도만 보여주는 좁은 롤링 윈도우라, 오래된 분기는 밀려나 못
-찾는다. (2) 더 근본적으로, fool.com은 애초에 모든 상장사의 대본을 만들지 않는다 — TSMC/NVIDIA 같은
-대형·주목주 위주라, Navitas Semiconductor(NVTS, 시총 약 30억 달러)처럼 상대적으로 작은 종목은 그
-회사 자체 Fool 페이지에도 대본 링크가 아예 없는 걸 확인했다(직접 테스트, 날짜를 추정한 URL 탐색으로도
-못 찾음). 미국 상장 종목만 커버한다(한국 기업은 fool.com에 대본이 없다).
+커버리지가 두 가지 이유로 제한적이다: (1) find_transcript_url이 검색하는 "최근 발표" 인덱스는
+페이지당 약 20개씩 페이지네이션되어 있다 — max_pages(기본 10, 약 200개)까지 뒤지지만, 그보다 더
+과거로 밀려난 분기는 못 찾는다. (2) 더 근본적으로, fool.com은 애초에 모든 상장사의 대본을 만들지
+않는다 — TSMC/NVIDIA 같은 대형·주목주 위주라, Navitas Semiconductor(NVTS, 시총 약 30억 달러)처럼
+상대적으로 작은 종목은 10페이지(약 200개)를 다 뒤져도 안 나온다는 걸 실제로 확인했다(그 회사 자체
+Fool 페이지에도 대본 링크가 아예 없다 — 페이지네이션 범위 문제가 아니라 애초에 대본 자체가 없는
+것). 미국 상장 종목만 커버한다(한국 기업은 fool.com에 대본이 없다).
 
 화자별 발언(speaker/text)뿐 아니라, chunking.py의 Q&A 인식 병합에 필요한 구조 정보도 함께 뽑는다:
 
@@ -39,6 +40,7 @@ from src.config import DATA_DIR_RAW
 
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
 _INDEX_URL = "https://www.fool.com/earnings-call-transcripts/"
+_INDEX_PAGE_URL = "https://www.fool.com/earnings-call-transcripts/page/{page}/"
 _LINK_RE = re.compile(r'href="(/earnings/call-transcripts/[^"]+)"')
 _QUARTER_RE = re.compile(r"-q(\d)-(\d{4})-earnings-call-transcript")
 
@@ -55,19 +57,31 @@ _ROLE_KEYWORDS = [
 ]
 
 
-def find_transcript_url(ticker):
-    """최근 실적발표 대본 목록에서 해당 티커의 URL을 찾는다 (최근 발표분만 커버됨)."""
-    resp = requests.get(_INDEX_URL, headers=_HEADERS, timeout=15)
-    resp.raise_for_status()
-    links = set(_LINK_RE.findall(resp.text))
+def find_transcript_url(ticker, max_pages=10):
+    """최근 실적발표 대본 목록에서 해당 티커의 URL을 찾는다.
 
+    "최근 발표" 인덱스는 한 페이지에 약 20개씩 보여주고 페이지네이션(.../page/2/, .../page/3/, ...)이
+    있다 — 예전엔 1페이지만 보고 없으면 바로 포기했는데, 그러면 바로 다음 페이지에 있는 것도 놓친다
+    (실제로 페이지네이션 존재를 확인하고서야 발견한 문제). max_pages(기본 10, 약 200개)까지 순서대로
+    확인한다. 그래도 못 찾으면 그 이상 과거로 밀려났거나 fool.com이 애초에 그 종목 대본을 안 만드는
+    것이다(README 참고 — 대형·주목주 위주라 소형주는 대본 자체가 없는 경우가 있다 — NVTS로 10페이지
+    끝까지 확인해서 실제로 검증함).
+    """
     ticker_slug = f"-{ticker.lower()}-q"
-    matches = [link for link in links if ticker_slug in link.lower()]
-    if not matches:
-        raise ValueError(
-            f"최근 실적발표 목록에서 '{ticker}' 대본을 찾을 수 없다 — 아직 발표 전이거나 목록에서 밀려났을 수 있다."
-        )
-    return "https://www.fool.com" + sorted(matches)[-1]
+    for page in range(1, max_pages + 1):
+        url = _INDEX_URL if page == 1 else _INDEX_PAGE_URL.format(page=page)
+        resp = requests.get(url, headers=_HEADERS, timeout=15)
+        resp.raise_for_status()
+        links = set(_LINK_RE.findall(resp.text))
+
+        matches = [link for link in links if ticker_slug in link.lower()]
+        if matches:
+            return "https://www.fool.com" + sorted(matches)[-1]
+
+    raise ValueError(
+        f"최근 {max_pages}페이지 실적발표 목록에서 '{ticker}' 대본을 찾을 수 없다 — 그 이상 과거로 "
+        "밀려났거나, fool.com이 애초에 이 종목 대본을 만들지 않을 수 있다."
+    )
 
 
 def _parse_fiscal_quarter(url):

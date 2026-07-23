@@ -138,3 +138,32 @@ def test_find_transcript_url_raises_when_not_found():
         mock_requests.get.return_value = mock_response
         with pytest.raises(ValueError):
             transcript.find_transcript_url("TSM")
+
+
+def test_find_transcript_url_checks_later_pages_when_not_on_first_page():
+    # 1페이지엔 없고 2페이지에 있는 경우 — 예전엔 1페이지만 보고 바로 포기했다(실제로 fool.com
+    # 인덱스에 페이지네이션이 있다는 걸 뒤늦게 발견하고 고친 문제).
+    page1 = MagicMock()
+    page1.text = '<a href="/earnings/call-transcripts/2026/07/16/unitedhealth-unh-q2-2026-earnings-call-transcript/">b</a>'
+    page2 = MagicMock()
+    page2.text = '<a href="/earnings/call-transcripts/2026/06/01/tsm-tsm-q1-2026-earnings-call-transcript/">a</a>'
+
+    with patch.object(transcript, "requests") as mock_requests:
+        mock_requests.get.side_effect = [page1, page2]
+        url = transcript.find_transcript_url("TSM")
+
+    assert url == "https://www.fool.com/earnings/call-transcripts/2026/06/01/tsm-tsm-q1-2026-earnings-call-transcript/"
+    assert mock_requests.get.call_args_list[0].args[0] == transcript._INDEX_URL
+    assert mock_requests.get.call_args_list[1].args[0] == transcript._INDEX_PAGE_URL.format(page=2)
+
+
+def test_find_transcript_url_raises_after_exhausting_max_pages():
+    empty_page = MagicMock()
+    empty_page.text = '<a href="/earnings/call-transcripts/2026/07/16/unitedhealth-unh-q2-2026-earnings-call-transcript/">b</a>'
+
+    with patch.object(transcript, "requests") as mock_requests:
+        mock_requests.get.return_value = empty_page
+        with pytest.raises(ValueError):
+            transcript.find_transcript_url("TSM", max_pages=2)
+
+    assert mock_requests.get.call_count == 2
