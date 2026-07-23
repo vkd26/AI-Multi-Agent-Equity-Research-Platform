@@ -78,6 +78,21 @@ def test_download_transcript_parses_fiscal_quarter_from_url(tmp_path, monkeypatc
     assert (result["fiscal_quarter"] == "Q2 2026").all()
 
 
+def test_download_transcript_parses_fiscal_quarter_from_url_without_call_in_slug(tmp_path, monkeypatch):
+    # fool.com이 "-earnings-call-transcript"뿐 아니라 "-earnings-transcript"(call- 없이) 슬러그도 쓴다
+    # (예: AEye) — 내용은 완전히 같은 진짜 대본인데 URL 명명 방식만 다르다. 둘 다 파싱돼야 한다.
+    monkeypatch.setattr(transcript, "DATA_DIR_RAW", str(tmp_path))
+    mock_response = MagicMock()
+    mock_response.text = _SAMPLE_HTML
+    url = "https://www.fool.com/earnings/call-transcripts/2026/06/02/aeye-lidr-q1-2026-earnings-transcript/"
+
+    with patch.object(transcript, "requests") as mock_requests:
+        mock_requests.get.return_value = mock_response
+        result = transcript.download_transcript("LIDR", url=url, use_cache=False)
+
+    assert (result["fiscal_quarter"] == "Q1 2026").all()
+
+
 def test_download_transcript_section_boundary_is_first_true_analyst_not_operator(tmp_path, monkeypatch):
     monkeypatch.setattr(transcript, "DATA_DIR_RAW", str(tmp_path))
     mock_response = MagicMock()

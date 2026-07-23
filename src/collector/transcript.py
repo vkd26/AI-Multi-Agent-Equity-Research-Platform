@@ -42,7 +42,7 @@ _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit
 _INDEX_URL = "https://www.fool.com/earnings-call-transcripts/"
 _INDEX_PAGE_URL = "https://www.fool.com/earnings-call-transcripts/page/{page}/"
 _LINK_RE = re.compile(r'href="(/earnings/call-transcripts/[^"]+)"')
-_QUARTER_RE = re.compile(r"-q(\d)-(\d{4})-earnings-call-transcript")
+_QUARTER_RE = re.compile(r"-q(\d)-(\d{4})-earnings-(?:call-)?transcript")
 
 _ANALYST_INTRO_RE = re.compile(
     r"([A-Z][\w.'-]+(?:\s+[A-Z][\w.'-]+)+)\s+(?:from|with)\s+([A-Z][\w&.,'\-\s]+?)[,.]"
@@ -86,7 +86,11 @@ def find_transcript_url(ticker, max_pages=10):
 
 def _parse_fiscal_quarter(url):
     """URL 슬러그(예: ".../tsm-tsm-q2-2026-earnings-call-transcript/")에서 분기를 뽑는다. fool.com이
-    URL을 이 형식으로 일관되게 생성하므로 본문 텍스트를 파싱하는 것보다 훨씬 신뢰도가 높다."""
+    URL을 이 형식으로 일관되게 생성하므로 본문 텍스트를 파싱하는 것보다 훨씬 신뢰도가 높다.
+
+    fool.com은 "-earnings-call-transcript"와 "-earnings-transcript"(call- 없이) 두 슬러그 형식을
+    섞어 쓴다 — 실제로 두 형식 다 열어보면 transcript-content/CALL PARTICIPANTS 구조가 완전히 같은
+    진짜 대본이라(내용이 다른 게 아니라 URL 명명 방식만 다름), _QUARTER_RE가 둘 다 받아들이게 했다."""
     m = _QUARTER_RE.search(url)
     return f"Q{m.group(1)} {m.group(2)}" if m else None
 
