@@ -26,11 +26,10 @@ def get_risk_free_rate(market):
     미국은 yfinance의 ^TNX(CBOE 10년물 국채 수익률 지수) 티커로 실시간 조회한다 — Close 값 자체가
     이미 퍼센트 단위(예: 4.642는 4.642%)라 100으로 나눠서 소수로 바꾼다.
 
-    한국은 yfinance에 국채수익률 티커가 없다 — KR10Y=RR, ^KTB10Y 등 여러 후보를 직접 시도해봤지만
-    전부 404/데이터 없음이었다(148070.KS 같은 국고채 ETF는 수익률이 아니라 가격이라 못 쓴다). 그래서
-    확인 시점의 값을 폴백으로 쓴다 — 국채금리는 매일 바뀌므로(실제로 이 값을 확인한 날 한국 10년물이
-    4년 만에 최고치를 찍는 등 급변동 중이었다) 정확한 최신값이 필요하면 직접 조사해서 risk_free_rate
-    인자에 넣을 것.
+    한국은 yfinance에 국채수익률 티커가 없어서(KR10Y=RR, ^KTB10Y 등 여러 후보를 직접 시도해봤지만
+    전부 404/데이터 없음) 대신 KRX Open API(국채전문유통시장 일별매매정보, `bon/kts_bydd_trd`)로
+    국고채 10년 지표금리를 실시간 조회한다 — `_fetch_kr_10y_treasury_yield()` 참고. `KRX_API_KEY`가
+    설정돼 있지 않거나 조회에 실패하면 확인 시점의 값을 폴백으로 쓴다.
     """
     if market == "US":
         import yfinance as yf
@@ -38,6 +37,48 @@ def get_risk_free_rate(market):
         if hist.empty:
             raise ValueError("^TNX에서 미국 10년물 국채 수익률을 가져오지 못했다.")
         return hist["Close"].iloc[-1] / 100
+    return _fetch_kr_10y_treasury_yield()
+
+
+def _fetch_kr_10y_treasury_yield():
+    """KRX Open API로 국고채 10년 지표금리(benchmark yield)를 가져온다.
+
+    응답에는 만기 10년으로 표시된 종목이 두 개 섞여 나온다 — 하나는 물가연동국고채(종목명이 "물가"로
+    시작, 실질금리라 훨씬 낮게 나온다)이고 실제로 원하는 건 종목명이 "국고"로 시작하는 명목 국고채다.
+    이 둘을 구분하지 않고 그냥 만기(BND_EXP_TP_NM)만 보고 집으면 물가채 실질금리를 명목 무위험금리로
+    잘못 쓰게 된다(실제로 라이브 응답을 까보고서야 발견한 문제).
+
+    주말/공휴일은 그날 데이터가 없으므로 최근 영업일을 찾을 때까지 며칠 전으로 거슬러 올라간다.
+    `KRX_API_KEY`가 없으면(선택적 기능이라 필수 설정은 아님) 폴백값을 쓴다.
+    """
+    import os
+    from datetime import date, timedelta
+
+    import requests
+    from dotenv import load_dotenv
+
+    from src.config import PROJECT_ROOT
+
+    load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+    load_dotenv(os.path.join(os.path.expanduser("~"), ".env"))
+    api_key = os.getenv("KRX_API_KEY")
+    if not api_key:
+        return _KR_RISK_FREE_RATE_FALLBACK
+
+    for days_back in range(7):
+        bas_dd = (date.today() - timedelta(days=days_back)).strftime("%Y%m%d")
+        response = requests.get(
+            "https://data-dbg.krx.co.kr/svc/apis/bon/kts_bydd_trd",
+            params={"AUTH_KEY": api_key, "basDd": bas_dd}, timeout=10,
+        )
+        for row in response.json().get("OutBlock_1", []):
+            if (
+                row.get("BND_EXP_TP_NM") == "10"
+                and row.get("GOVBND_ISU_TP_NM") == "지표"
+                and row.get("ISU_NM", "").startswith("국고")
+            ):
+                return float(row["CLSPRC_YD"]) / 100
+
     return _KR_RISK_FREE_RATE_FALLBACK
 
 

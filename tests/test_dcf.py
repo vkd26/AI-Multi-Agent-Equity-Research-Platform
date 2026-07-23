@@ -18,8 +18,56 @@ from src.valuation.dcf import (
 )
 
 
-def test_get_risk_free_rate_kr_returns_fallback_without_network_call():
-    assert get_risk_free_rate("KR") == _KR_RISK_FREE_RATE_FALLBACK
+def test_get_risk_free_rate_kr_returns_fallback_without_api_key(monkeypatch):
+    monkeypatch.delenv("KRX_API_KEY", raising=False)
+    with patch("dotenv.load_dotenv"):  # 실제 ~/.env에 키가 있어도 테스트는 결정론적으로 동작해야 한다
+        assert get_risk_free_rate("KR") == _KR_RISK_FREE_RATE_FALLBACK
+
+
+def test_get_risk_free_rate_kr_picks_nominal_govbond_not_inflation_linked(monkeypatch):
+    # KRX API 응답엔 만기 10년 종목이 두 개 섞여 나온다 — 하나는 물가연동국고채(종목명이 "물가"로
+    # 시작, 실질금리라 훨씬 낮음), 하나는 명목 국고채("국고"로 시작) — 후자를 골라야 한다.
+    monkeypatch.setenv("KRX_API_KEY", "fake-key")
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "OutBlock_1": [
+            {"BND_EXP_TP_NM": "10", "GOVBND_ISU_TP_NM": "지표", "ISU_NM": "물가01125-3606(26-4)", "CLSPRC_YD": "1.731"},
+            {"BND_EXP_TP_NM": "10", "GOVBND_ISU_TP_NM": "지표", "ISU_NM": "국고04250-3606(26-6)", "CLSPRC_YD": "4.397"},
+        ]
+    }
+    with patch("dotenv.load_dotenv"), patch("requests.get", return_value=mock_response) as mock_get:
+        rate = get_risk_free_rate("KR")
+
+    mock_get.assert_called_once()
+    assert mock_get.call_args.kwargs["params"]["AUTH_KEY"] == "fake-key"
+    assert rate == pytest.approx(0.04397)
+
+
+def test_get_risk_free_rate_kr_retries_earlier_dates_when_no_data(monkeypatch):
+    monkeypatch.setenv("KRX_API_KEY", "fake-key")
+    empty_response = MagicMock()
+    empty_response.json.return_value = {"OutBlock_1": []}
+    good_response = MagicMock()
+    good_response.json.return_value = {
+        "OutBlock_1": [{"BND_EXP_TP_NM": "10", "GOVBND_ISU_TP_NM": "지표", "ISU_NM": "국고01125", "CLSPRC_YD": "4.2"}]
+    }
+
+    with patch("dotenv.load_dotenv"), patch("requests.get", side_effect=[empty_response, empty_response, good_response]) as mock_get:
+        rate = get_risk_free_rate("KR")
+
+    assert mock_get.call_count == 3
+    assert rate == pytest.approx(0.042)
+
+
+def test_get_risk_free_rate_kr_falls_back_after_a_week_of_no_data(monkeypatch):
+    monkeypatch.setenv("KRX_API_KEY", "fake-key")
+    empty_response = MagicMock()
+    empty_response.json.return_value = {"OutBlock_1": []}
+
+    with patch("dotenv.load_dotenv"), patch("requests.get", return_value=empty_response):
+        rate = get_risk_free_rate("KR")
+
+    assert rate == _KR_RISK_FREE_RATE_FALLBACK
 
 
 def test_get_equity_risk_premium_differs_by_market():

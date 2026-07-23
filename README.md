@@ -58,6 +58,7 @@ ai-equity-research-agent/
 - `FINNHUB_API_KEY`: [finnhub.io](https://finnhub.io) 무료 발급
 - `GEMINI_API_KEY`: [aistudio.google.com](https://aistudio.google.com) 무료 발급
 - `SEC_USER_AGENT` (선택): SEC EDGAR는 키가 없지만 신원을 밝히는 User-Agent를 요구한다 — 기본값도 동작하지만 운영 시 실제 연락처로 바꾸는 걸 권장
+- `KRX_API_KEY` (선택): [openapi.krx.co.kr](https://openapi.krx.co.kr) 회원가입 후 "국채전문유통시장 일별매매정보" 서비스를 별도 신청(승인까지 약 1영업일)하면 발급된다 — 한국 무위험금리(국고채 10년 지표금리)를 실시간 조회하는 데 쓴다. 없으면 확인 시점 값으로 자동 폴백한다.
 
 임베딩(BGE-M3)·리랭커(BGE-Reranker) 모델은 API 키 없이 로컬에서 실행되며, 첫 실행 시 허깅페이스에서
 자동 다운로드된다(약 2GB).
