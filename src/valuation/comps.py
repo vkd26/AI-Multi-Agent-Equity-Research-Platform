@@ -101,11 +101,22 @@ def peer_multiples_table(peer_infos, multiples=("enterpriseToEbitda", "trailingP
     return table, summary
 
 
-def implied_value_from_multiple(target_metric, peer_multiple):
-    """피어 배수 × 대상 기업의 해당 지표(EBITDA, EPS 등) = 내재 가치."""
+def implied_value_from_multiple(target_metric, peer_multiple, metric_name="지표"):
+    """피어 배수 × 대상 기업의 해당 지표(EBITDA, EPS 등) = 내재 가치.
+
+    target_metric이나 peer_multiple이 음수면 계산하지 않고 (None, 사유) 를 반환한다 — PER·EV/EBITDA
+    같은 이익 기반 배수는 분자·분모 중 하나라도 적자(음수)면 수학적으로는 곱해지더라도 경제적으로
+    무의미한 값(예: 마이너스 "내재주가")이 나온다. 실제로 적자 기업(Wolfspeed, EBITDA/EPS 둘 다 음수)에
+    적용했더니 내재주가가 -$120~-$2,012로 나오는 걸 확인했다 — 조용히 틀린 숫자를 주는 대신 계산을
+    건너뛰고 이유를 알려준다.
+    """
     if target_metric is None or peer_multiple is None:
-        return None
-    return target_metric * peer_multiple
+        return None, None
+    if target_metric < 0:
+        return None, f"대상 기업의 {metric_name}이(가) 음수(적자)라 배수 적용이 무의미해 계산하지 않았다."
+    if peer_multiple < 0:
+        return None, f"피어 그룹의 {metric_name} 배수 중앙값이 음수라 계산하지 않았다."
+    return target_metric * peer_multiple, None
 
 
 def comps_valuation(target_info, peer_infos, ebitda_multiple_col="enterpriseToEbitda", pe_multiple_col="trailingPE"):
@@ -114,8 +125,13 @@ def comps_valuation(target_info, peer_infos, ebitda_multiple_col="enterpriseToEb
     median_ev_ebitda = peer_summary.loc["median", ebitda_multiple_col]
     median_pe = peer_summary.loc["median", pe_multiple_col]
 
-    implied_ev = implied_value_from_multiple(target_info.get("ebitda"), median_ev_ebitda)
-    implied_price_from_pe = implied_value_from_multiple(target_info.get("trailingEps"), median_pe)
+    warnings = []
+    implied_ev, ev_ebitda_warning = implied_value_from_multiple(target_info.get("ebitda"), median_ev_ebitda, "EBITDA")
+    implied_price_from_pe, pe_warning = implied_value_from_multiple(target_info.get("trailingEps"), median_pe, "EPS")
+    if ev_ebitda_warning:
+        warnings.append(ev_ebitda_warning)
+    if pe_warning:
+        warnings.append(pe_warning)
 
     net_debt = (target_info.get("totalDebt") or 0) - (target_info.get("totalCash") or 0)
     shares = target_info.get("sharesOutstanding")
@@ -129,4 +145,5 @@ def comps_valuation(target_info, peer_infos, ebitda_multiple_col="enterpriseToEb
         "median_pe": median_pe,
         "implied_price_from_ev_ebitda": implied_price_from_ev_ebitda,
         "implied_price_from_pe": implied_price_from_pe,
+        "warnings": warnings,
     }

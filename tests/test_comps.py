@@ -27,12 +27,26 @@ def test_peer_multiples_table_builds_table_and_median_summary():
 
 
 def test_implied_value_from_multiple_computes_product():
-    assert implied_value_from_multiple(target_metric=100, peer_multiple=20) == 2000
+    value, warning = implied_value_from_multiple(target_metric=100, peer_multiple=20)
+    assert value == 2000
+    assert warning is None
 
 
 def test_implied_value_from_multiple_returns_none_when_missing():
-    assert implied_value_from_multiple(None, 20) is None
-    assert implied_value_from_multiple(100, None) is None
+    assert implied_value_from_multiple(None, 20) == (None, None)
+    assert implied_value_from_multiple(100, None) == (None, None)
+
+
+def test_implied_value_from_multiple_returns_none_with_warning_when_target_metric_negative():
+    value, warning = implied_value_from_multiple(-50, 20, metric_name="EBITDA")
+    assert value is None
+    assert "EBITDA" in warning and "음수" in warning
+
+
+def test_implied_value_from_multiple_returns_none_with_warning_when_peer_multiple_negative():
+    value, warning = implied_value_from_multiple(50, -20, metric_name="EPS")
+    assert value is None
+    assert "EPS" in warning and "음수" in warning
 
 
 def test_comps_valuation_computes_implied_price_from_ev_ebitda_and_pe():
@@ -44,6 +58,7 @@ def test_comps_valuation_computes_implied_price_from_ev_ebitda_and_pe():
     assert result["implied_price_from_ev_ebitda"] == pytest.approx(19.8)
     # implied_price_from_pe = 5.0 * 20 = 100 (PER 방식은 이미 주당 값이라 순부채 조정 불필요)
     assert result["implied_price_from_pe"] == pytest.approx(100.0)
+    assert result["warnings"] == []
 
 
 def test_comps_valuation_handles_missing_shares_or_metrics_gracefully():
@@ -52,6 +67,17 @@ def test_comps_valuation_handles_missing_shares_or_metrics_gracefully():
     result = comps_valuation(target, peers)
     assert result["implied_price_from_ev_ebitda"] is None
     assert result["implied_price_from_pe"] is None
+
+
+def test_comps_valuation_skips_negative_ebitda_and_eps_with_warnings():
+    # Wolfspeed(WOLF)처럼 EBITDA/EPS가 둘 다 적자인 기업 — 음수 "내재주가"를 조용히 내지 않아야 한다.
+    target = {"ebitda": -100, "trailingEps": -2.0, "totalDebt": 50, "totalCash": 30, "sharesOutstanding": 100}
+    peers = {"PEER1": {"enterpriseToEbitda": 10.0, "trailingPE": 20.0}}
+
+    result = comps_valuation(target, peers)
+    assert result["implied_price_from_ev_ebitda"] is None
+    assert result["implied_price_from_pe"] is None
+    assert len(result["warnings"]) == 2
 
 
 def test_extract_ticker_candidates_parses_last_comma_separated_line():
