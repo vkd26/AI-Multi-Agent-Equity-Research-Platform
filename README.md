@@ -14,7 +14,7 @@
 | ④ | Earnings Call Analyzer | 키워드 언급 QoQ 비교, 화자 역할별 발언 필터링, RAG 기반 Guidance/Risk/CapEx/Margin/Demand 요약 |
 | ⑤ | News Analyzer | 뉴스 논조(Positive/Negative/Neutral) + 영향도(High/Medium/Low) 분류 |
 | ⑥ | Financial Analyzer | Margin/ROE/PER/PEG/EV-EBITDA/Debt·Equity/FCF/Revenue Growth |
-| ⑦ | Valuation Engine | DCF(WACC·무위험금리·ERP·성장률 전부 실데이터 기반), Comparable Company Analysis(Gemini 검색+yfinance 교차검증으로 피어 자동 선정, 한국·미국 상장만), Sensitivity, Football Field |
+| ⑦ | Valuation Engine | DCF(WACC·무위험금리·ERP·성장률 전부 실데이터 기반, 성장률은 5년에 걸쳐 터미널성장률로 선형 수렴), Comparable Company Analysis(Gemini 검색+yfinance 교차검증으로 피어 자동 선정, 한국·미국 상장만), Sensitivity, Football Field |
 | ⑧ | Investment Thesis Generator | Valuation·재무·실적발표·뉴스 근거를 종합해 Thesis/Bear Case/Catalyst/Risk/Target Price 생성 (Target Price는 DCF 60%·Comps 40% 가중평균 기준점에 근거) |
 | ⑨ | Portfolio Monitor | 공시/뉴스/실적발표/목표주가 변동 4가지를 매일 체크, 트리거 시에만 비싼 LLM 재생성 유도 |
 | ⑩ | PDF Report | 위 결과 + LLM 생성 Company Overview/Business Analysis + 투자의견(매수/매도/중립)을 Jinja2+WeasyPrint로 최종 투자보고서 PDF 생성 |
@@ -129,8 +129,13 @@ pytest
 논조분류 → 재무비율 → DCF(내재주가 $240.76)/Comps(피어 GFS·UMC·TSEM·000990.KS·005930.KS 자동 선정,
 내재주가 $230~$519)/Sensitivity/Football Field → Investment Thesis/Bear Case/Catalyst/Risk/Target
 Price($724.89, DCF·Comps 가중평균 근거) → Portfolio Monitor → PDF 리포트(투자의견 포함) → 자연어
-질의응답까지)가 저장되어 있다. 단위 테스트 196개 통과.
+질의응답까지)가 저장되어 있다. 단위 테스트 207개 통과.
 
-최근에 고친 실제 버그: yfinance가 TSM처럼 주가는 USD, 재무제표는 원래 보고통화(TWD)로 반환하는
-케이스를 모르고 그대로 계산에 써서 DCF 내재주가가 실제 주가의 20~30배로 부풀려졌던 문제
+최근에 고친 실제 버그:
+- yfinance가 TSM처럼 주가는 USD, 재무제표는 원래 보고통화(TWD)로 반환하는 케이스를 모르고 그대로
+  계산에 써서 DCF 내재주가가 실제 주가의 20~30배로 부풀려졌던 문제
+- DCF의 FCF 성장률을 5년 내내 고정값으로 유지하다가 터미널가치 계산 시점(6년차)에 터미널성장률로
+  갑자기 뚝 떨어뜨리던 문제 — 실제 성장은 절벽처럼 안 꺾이고 점진적으로 둔화되므로 이 방식은 가치를
+  부풀리는 쪽으로 편향됐다. 이제 1년차 성장률에서 마지막 해(5년차) 터미널성장률까지 선형으로
+  점감(fade)하도록 고쳐서, VEEV 실 데이터 기준 내재주가가 $281 → $226.64로 조정됨
 (`market.normalize_financial_currency()`로 수정, 위 "알려진 제한사항" 참고).

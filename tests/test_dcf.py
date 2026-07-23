@@ -137,9 +137,20 @@ def test_compute_wacc_treats_missing_debt_as_zero():
     assert wacc == pytest.approx(0.03 + 1.0 * 0.05)
 
 
-def test_project_fcf_compounds_growth_rate():
-    result = project_fcf(base_fcf=100, growth_rate=0.10, years=3)
-    assert result == pytest.approx([110, 121, 133.1])
+def test_project_fcf_fades_growth_rate_linearly_to_terminal_by_final_year():
+    # 1년차는 growth_rate 그대로, 마지막 해엔 정확히 terminal_growth_rate로 수렴해야 한다 —
+    # growth_rate가 5년 내내 고정됐다가 6년차에 terminal_growth_rate로 뚝 떨어지는 예전 방식은
+    # 가치를 부풀리는 쪽으로 편향된다(실제 기업 성장은 절벽처럼 안 꺾이고 점진적으로 둔화된다).
+    result = project_fcf(base_fcf=100, growth_rate=0.10, terminal_growth_rate=0.02, years=3)
+    # t=1: growth=0.10 -> 110
+    # t=2: growth=0.10+(0.02-0.10)*0.5=0.06 -> 110*1.06=116.6
+    # t=3: growth=0.02(=terminal) -> 116.6*1.02=118.932
+    assert result == pytest.approx([110, 116.6, 118.932])
+
+
+def test_project_fcf_uses_flat_terminal_growth_when_years_is_one():
+    result = project_fcf(base_fcf=100, growth_rate=0.10, terminal_growth_rate=0.02, years=1)
+    assert result == pytest.approx([102])
 
 
 def test_terminal_value_uses_gordon_growth_formula():
@@ -162,7 +173,8 @@ def test_run_dcf_end_to_end_matches_manual_calculation():
         base_fcf=100, wacc=0.10, growth_rate=0.05, terminal_growth_rate=0.02,
         years=2, net_debt=50, shares_outstanding=10,
     )
-    fcf1, fcf2 = 105, 110.25
+    # years=2라 1년차는 growth_rate(5%), 2년차(마지막 해)는 이미 terminal_growth_rate(2%)로 수렴한다
+    fcf1, fcf2 = 105, 105 * 1.02
     pv_fcf = fcf1 / 1.1 + fcf2 / 1.1**2
     tv = fcf2 * 1.02 / (0.10 - 0.02)
     pv_tv = tv / 1.1**2

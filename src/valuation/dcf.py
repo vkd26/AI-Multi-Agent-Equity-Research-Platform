@@ -120,9 +120,24 @@ def compute_wacc(info, risk_free_rate, equity_risk_premium, tax_rate, cost_of_de
     return weight_equity * cost_of_equity + weight_debt * cost_of_debt * (1 - tax_rate)
 
 
-def project_fcf(base_fcf, growth_rate, years=5):
-    """base_fcf가 매년 growth_rate로 성장한다고 가정하고 향후 years년 FCF를 투영한다."""
-    return [base_fcf * (1 + growth_rate) ** t for t in range(1, years + 1)]
+def project_fcf(base_fcf, growth_rate, terminal_growth_rate, years=5):
+    """base_fcf가 1년차엔 growth_rate로 성장하고, 이후 매년 선형으로 terminal_growth_rate까지
+    점감(fade)하며 성장한다고 가정하고 향후 years년 FCF를 투영한다.
+
+    예전엔 growth_rate를 years년 내내 그대로 유지하다가, 터미널가치 계산 시점(years+1년차)에
+    terminal_growth_rate로 갑자기 뚝 떨어뜨렸다 — 실제 성장은 절벽처럼 꺾이는 게 아니라 점진적으로
+    둔화되므로, 이 방식은 가치를 부풀리는 쪽으로 편향된다(고성장이 5년째까지 풀로 유지된 것처럼
+    계산되어 현금흐름이 실제보다 높게, 오래 잡힌다). 선형 fade를 적용하면 마지막 해(`years`년차)
+    성장률이 정확히 terminal_growth_rate가 되어, 터미널가치로 이어지는 전환이 매끄러워진다.
+    """
+    cash_flows = []
+    fcf = base_fcf
+    for t in range(1, years + 1):
+        fraction = (t - 1) / (years - 1) if years > 1 else 1.0
+        current_growth = growth_rate + (terminal_growth_rate - growth_rate) * fraction
+        fcf = fcf * (1 + current_growth)
+        cash_flows.append(fcf)
+    return cash_flows
 
 
 def terminal_value(final_year_fcf, wacc, terminal_growth_rate):
@@ -142,7 +157,7 @@ def discount_cash_flows(cash_flows, wacc):
 
 def run_dcf(base_fcf, wacc, growth_rate, terminal_growth_rate, years=5, net_debt=0, shares_outstanding=None):
     """DCF 파이프라인: FCF 투영 -> PV(FCF) + PV(터미널가치) -> 기업가치 -> 자기자본가치 -> (옵션)내재주가."""
-    projected = project_fcf(base_fcf, growth_rate, years)
+    projected = project_fcf(base_fcf, growth_rate, terminal_growth_rate, years)
     tv = terminal_value(projected[-1], wacc, terminal_growth_rate)
 
     pv_fcf = discount_cash_flows(projected, wacc)
