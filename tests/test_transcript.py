@@ -146,6 +146,21 @@ def test_find_transcript_url_matches_ticker_slug():
     assert url == "https://www.fool.com/earnings/call-transcripts/2026/07/16/tsm-tsm-q2-2026-earnings-call-transcript/"
 
 
+def test_find_transcript_url_matches_ticker_only_slug_without_company_name_prefix():
+    # 회사명 없이 티커만 오는 슬러그(예: "panw-q3-2026-...")도 있다 — 이땐 티커 앞이 "-"가 아니라
+    # 날짜 경로의 "/"라서, 하이픈만 허용하던 예전 방식으로는 못 찾았다(실제 200개 스크래핑으로 발견).
+    mock_response = MagicMock()
+    mock_response.text = (
+        '<a href="/earnings/call-transcripts/2026/06/02/panw-q3-2026-earnings-transcript/">a</a>'
+        '<a href="/earnings/call-transcripts/2026/07/16/unitedhealth-unh-q2-2026-earnings-call-transcript/">b</a>'
+    )
+    with patch.object(transcript, "requests") as mock_requests:
+        mock_requests.get.return_value = mock_response
+        url = transcript.find_transcript_url("PANW")
+
+    assert url == "https://www.fool.com/earnings/call-transcripts/2026/06/02/panw-q3-2026-earnings-transcript/"
+
+
 def test_find_transcript_url_raises_when_not_found():
     mock_response = MagicMock()
     mock_response.text = '<a href="/earnings/call-transcripts/2026/07/16/unitedhealth-unh-q2-2026-earnings-call-transcript/">b</a>'

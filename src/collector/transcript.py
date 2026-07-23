@@ -66,15 +66,20 @@ def find_transcript_url(ticker, max_pages=10):
     확인한다. 그래도 못 찾으면 그 이상 과거로 밀려났거나 fool.com이 애초에 그 종목 대본을 안 만드는
     것이다(README 참고 — 대형·주목주 위주라 소형주는 대본 자체가 없는 경우가 있다 — NVTS로 10페이지
     끝까지 확인해서 실제로 검증함).
+
+    슬러그는 보통 "회사명-티커-qN-YYYY"(예: "badger-meter-bmi-q2-2026-...")지만, 회사명 없이
+    "티커-qN-YYYY"(예: "panw-q3-2026-...")만 오는 경우도 있다 — 이때는 티커 앞이 하이픈이 아니라
+    날짜 경로의 슬래시라서, 티커 앞에 하이픈만 허용하던 예전 방식으로는 못 찾았다(실제로 200개 대본을
+    스크래핑해보고서야 발견한 문제). 그래서 티커 앞에 "-" 또는 "/" 둘 다 허용한다.
     """
-    ticker_slug = f"-{ticker.lower()}-q"
+    ticker_pattern = re.compile(rf"[/-]{re.escape(ticker.lower())}-q\d")
     for page in range(1, max_pages + 1):
         url = _INDEX_URL if page == 1 else _INDEX_PAGE_URL.format(page=page)
         resp = requests.get(url, headers=_HEADERS, timeout=15)
         resp.raise_for_status()
         links = set(_LINK_RE.findall(resp.text))
 
-        matches = [link for link in links if ticker_slug in link.lower()]
+        matches = [link for link in links if ticker_pattern.search(link.lower())]
         if matches:
             return "https://www.fool.com" + sorted(matches)[-1]
 
